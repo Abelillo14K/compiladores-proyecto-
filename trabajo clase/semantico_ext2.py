@@ -19,7 +19,7 @@ class TablaSimbolos:
         else:
             raise Exception("No se puede salir del ambito global")
 
-    def declarar_variables(self, nombre, tipo):
+    def declarar_variable(self, nombre, tipo):
         # verificamos que exista en el ambito actual
         ambito_actual = self.ambitos[-1]
         if nombre in ambito_actual:
@@ -38,10 +38,35 @@ class TablaSimbolos:
             raise Exception(f"Error: Funcion '{nombre}' ya definida")
         self.funciones[nombre] = (tipo_retorno, parametros)
 
-    def obtener_infop_funcion(self, nombre):
+    def obtener_info_funcion(self, nombre):
         if nombre not in self.funciones:
             raise Exception(f"Error: funcion '{nombre}' no definida")
         return self.funciones[nombre]
+
+        for var, tipo in self.ambitos[0].items():
+            print(f"        {var:12} : {tipo}")
+
+        # 2. variables locales recuperadas del historial
+        print("\n[historial de Ambitos locales finalizados]:")
+        for i, h in enumerate(self.historial_ambitos):
+            print(f"    Bloque finalizado #{i} -{h['bloque']} (Nivel {h['nivel']}):")
+            for var, tipo in h['variables'].items():
+                print(f"        {var:12} : {tipo}")
+
+
+#------------------- Sistema de tipos ----------------------------------
+class SistemaTipos:
+
+    @staticmethod
+    def es_compatible(t1, t2):
+        return t1==t2 or (t1 == 'int' and t2 == 'float') or (t2 == 'int' and t1 == 'float')
+
+    @staticmethod
+    def tipo_resultante(t1, t2, operador):
+        # Promocion de tipos
+        if t1 == 'float' or t2 == 'float':
+            return 'float'
+        return 'int'
 
 
 # ------------------ Analizador Semantico -------------------------------
@@ -66,7 +91,7 @@ class AnalizadorSemantico:
 
             # 3. declarar parametros dentro del nuevo ambito
             for p_nombre, p_tipo in parametros_info:
-                self.tabla_simbolos.declarar_variables(p_nombre, p_tipo)
+                self.tabla_simbolos.declarar_variable(p_nombre, p_tipo)
 
             # 4. analizar cuerpo de la funcion
             for instruccion in nodo.cuerpo:
@@ -77,16 +102,37 @@ class AnalizadorSemantico:
                 else:
                     self.analizar(instruccion)
             # 5. salir del ambito
-            self.tabla_simbolos.salir_ambito()
+            self.tabla_simbolos.salir_ambito(nodo.nombre[1])
 
         elif isinstance(nodo, NodoAsignacion):
             tipo_expr = self.analizar(nodo.expresion)
-            if tipo_expr != nodo.tipo:
-                raise Exception(f"Error: no conciden los tipos {nodo.tipo} != {tipo_expr}")
+            if tipo_expr != nodo.tipo[1]:
+                raise Exception(f"Error: no conciden los tipos {nodo.tipo[1]} != {tipo_expr}")
 
             self.tabla_simbolos.declarar_variable(nodo.nombre[1], nodo.tipo[1])
+
         elif isinstance(nodo, NodoOperacion):
             tipo_izq = self.analizar(nodo.izquierda)
             tipo_der = self.analizar(nodo.derecha)
-            if tipo_izq != tipo_der:
+            if not SistemaTipos.es_compatible(tipo_izq, tipo_der):
                 raise Exception(f"Error: Tipos Incompatibles en la expresion {tipo_izq} {nodo.operador} {tipo_der}")
+            return SistemaTipos.tipo_resultante(tipo_izq, tipo_der, nodo.operador[1])
+
+        elif isinstance(nodo, NodoIdentificador):
+            return self.tabla_simbolos.obtener_tipo_variable(nodo.nombre[1])
+
+        elif isinstance(nodo, NodoNumero):
+            return 'int' if '.' not in nodo.valor[1] else 'float'
+
+        elif isinstance(nodo, NodoLlamada):
+            tipo, parametros = self.tabla_simbolos.obtener_info_funcion((nodo.nombre))
+            if len(parametros) != len(nodo.argumentos):
+                raise Exception(f"Error: La funcion '{nodo.nombre}' espera {len(parametros)} argumentos, pero recibio {len(nodo.argumentos)}")
+            i = 0
+            for argumento in nodo.argumentos:
+                arg_tipo = self.analizar(argumento)
+                param_tipo = parametros[i][1]
+                if not SistemaTipos.es_compatible(arg_tipo, param_tipo):
+                    raise Exception(f"Error: No coinciden los tipos")
+                i+=1
+            return tipo
