@@ -6,7 +6,10 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 
 from nodo_visual import NodoVisual
-from traductor import TraductorDiagrama
+from nodos_ast import NodoPrograma, NodoAsignacion, NodoEntrada, NodoImprimir, NodoCondicional
+from traductor import Traductor
+from semantico import AnalizadorSemantico
+from lexico import identificar_tokens
 
 
 class IDECompilador(tk.Tk):
@@ -16,9 +19,7 @@ class IDECompilador(tk.Tk):
         self.geometry("1250x820")
 
         self.nodos = {}
-        self.conexiones = []
-        self.conexiones_lineas = []
-        self.contador_nodos = 0
+        self.lineas_conexion = []
         self.modo_conexion = False
         self.nodo_origen = None
         self.codigo_python_actual = ""
@@ -28,9 +29,9 @@ class IDECompilador(tk.Tk):
     def setup_ui(self):
         menubar = tk.Menu(self)
         filemenu = tk.Menu(menubar, tearoff=0)
-        filemenu.add_command(label="Nuevo", command=self.nuevo)
-        filemenu.add_command(label="Guardar", command=self.guardar)
-        filemenu.add_command(label="Cargar", command=self.cargar)
+        filemenu.add_command(label="Nuevo", command=self.nuevo_diagrama)
+        filemenu.add_command(label="Guardar", command=self.guardar_diagrama)
+        filemenu.add_command(label="Cargar", command=self.cargar_diagrama)
         filemenu.add_separator()
         filemenu.add_command(label="Salir", command=self.quit)
         menubar.add_cascade(label="Archivo", menu=filemenu)
@@ -57,15 +58,12 @@ class IDECompilador(tk.Tk):
 
         self.btn_conectar = ttk.Button(toolbar, text="Conectar", command=self.activar_conexion)
         self.btn_conectar.pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Eliminar todo", command=self.nuevo).pack(side=tk.LEFT, padx=5)
+        ttk.Button(toolbar, text="Ver tokens", command=self.ver_tokens_nodo).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Compilar", command=self.compilar).pack(side=tk.RIGHT, padx=5)
-
-        ayuda = ttk.Label(left_panel, text="Doble clic para editar | Arrastrar para mover | Conectar: clic en origen y luego destino")
-        ayuda.pack(fill=tk.X)
 
         self.canvas = tk.Canvas(left_panel, bg="white")
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.canvas.bind("<Button-1>", self.click_canvas)
+        self.canvas.bind("<ButtonRelease-1>", lambda event: self.redibujar_conexiones())
 
         right_panel = ttk.Frame(main_frame, width=430)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, padx=(5, 0))
@@ -83,39 +81,23 @@ class IDECompilador(tk.Tk):
         self.tab_asm = scrolledtext.ScrolledText(notebook, height=10)
         notebook.add(self.tab_asm, text="Ensamblador")
 
+        self.tab_tokens = scrolledtext.ScrolledText(notebook, height=10)
+        notebook.add(self.tab_tokens, text="Tokens")
+
         exec_frame = ttk.LabelFrame(right_panel, text="Salida de Ejecución")
         exec_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
         self.output_text = scrolledtext.ScrolledText(exec_frame, height=8, state="disabled", bg="#f0f0f0")
         self.output_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        btn_run = ttk.Button(exec_frame, text="Ejecutar Python", command=self.ejecutar_python)
-        btn_run.pack(pady=5)
+        ttk.Button(exec_frame, text="Ejecutar Python", command=self.ejecutar_python).pack(pady=5)
 
     def agregar_nodo(self, tipo):
-        self.contador_nodos += 1
-        x = 120 + (self.contador_nodos % 5) * 150
-        y = 90 + (self.contador_nodos // 5) * 90
-
-        texto = self.texto_inicial(tipo)
-        nodo = NodoVisual(self.canvas, self.contador_nodos, x, y, tipo, texto)
-        self.nodos[self.contador_nodos] = nodo
+        x = 130 + (len(self.nodos) % 4) * 170
+        y = 100 + (len(self.nodos) // 4) * 110
+        nodo = NodoVisual(self.canvas, x, y, tipo)
+        self.nodos[nodo.id_unico] = nodo
         self.reasignar_eventos_nodo(nodo)
-
-    def texto_inicial(self, tipo):
-        if tipo == "INICIO":
-            return "inicio"
-        if tipo == "FIN":
-            return "fin"
-        if tipo == "PROCESO":
-            return "x = 10"
-        if tipo == "DECISION":
-            return "x > 5"
-        if tipo == "ENTRADA":
-            return "x"
-        if tipo == "SALIDA":
-            return "x"
-        return tipo
 
     def reasignar_eventos_nodo(self, nodo):
         tag = nodo.etiqueta()
@@ -125,10 +107,8 @@ class IDECompilador(tk.Tk):
     def activar_conexion(self):
         self.modo_conexion = not self.modo_conexion
         self.nodo_origen = None
-        if self.modo_conexion:
-            self.btn_conectar.config(text="Conectando...")
-        else:
-            self.btn_conectar.config(text="Conectar")
+        texto = "Conectando..." if self.modo_conexion else "Conectar"
+        self.btn_conectar.config(text=texto)
 
     def click_nodo(self, event, nodo):
         if not self.modo_conexion:
@@ -136,74 +116,186 @@ class IDECompilador(tk.Tk):
 
         if self.nodo_origen is None:
             self.nodo_origen = nodo
-            self.canvas.itemconfig(nodo.figura_id, width=4)
+            self.canvas.itemconfig(nodo.id_figura, width=4)
         else:
-            if self.nodo_origen.id_nodo != nodo.id_nodo:
-                self.conectar_nodos(self.nodo_origen.id_nodo, nodo.id_nodo)
-            self.canvas.itemconfig(self.nodo_origen.figura_id, width=2)
-            self.nodo_origen = None
-            self.modo_conexion = False
-            self.btn_conectar.config(text="Conectar")
-
-    def click_canvas(self, event):
-        pass
-
-    def conectar_nodos(self, origen, destino):
-        for conexion in self.conexiones:
-            if conexion["origen"] == origen and conexion["destino"] == destino:
-                return
-
-        etiqueta = ""
-        salidas_origen = [c for c in self.conexiones if c["origen"] == origen]
-        if self.nodos[origen].tipo == "DECISION":
-            etiqueta = "SI" if len(salidas_origen) == 0 else "NO"
-
-        self.conexiones.append({"origen": origen, "destino": destino, "etiqueta": etiqueta})
-        self.redibujar_conexiones()
+            if self.nodo_origen.id_unico != nodo.id_unico:
+                if nodo.id_unico not in self.nodo_origen.conexiones:
+                    self.nodo_origen.conexiones.append(nodo.id_unico)
+                self.canvas.itemconfig(self.nodo_origen.id_figura, width=2)
+                self.nodo_origen = None
+                self.redibujar_conexiones()
 
     def redibujar_conexiones(self):
-        for item in self.conexiones_lineas:
-            self.canvas.delete(item)
-        self.conexiones_lineas.clear()
-
-        for conexion in self.conexiones:
-            if conexion["origen"] not in self.nodos or conexion["destino"] not in self.nodos:
-                continue
-            origen = self.nodos[conexion["origen"]]
-            destino = self.nodos[conexion["destino"]]
-            linea = self.canvas.create_line(origen.x, origen.y + 30, destino.x, destino.y - 30, arrow=tk.LAST, width=2)
-            self.conexiones_lineas.append(linea)
-
-            if conexion.get("etiqueta"):
-                tx = (origen.x + destino.x) / 2
-                ty = (origen.y + destino.y) / 2
-                texto = self.canvas.create_text(tx, ty, text=conexion["etiqueta"], font=("Arial", 9, "bold"), fill="blue")
-                self.conexiones_lineas.append(texto)
+        for linea in self.lineas_conexion:
+            self.canvas.delete(linea)
+        self.lineas_conexion = []
 
         for nodo in self.nodos.values():
-            self.canvas.tag_raise(nodo.etiqueta())
+            for id_destino in nodo.conexiones:
+                destino = self.nodos.get(id_destino)
+                if destino:
+                    linea = self.canvas.create_line(
+                        nodo.x, nodo.y, destino.x, destino.y,
+                        arrow=tk.LAST, width=2, fill="black"
+                    )
+                    self.lineas_conexion.append(linea)
+                    self.canvas.tag_lower(linea)
+
+    def nuevo_diagrama(self):
+        self.canvas.delete("all")
+        self.nodos = {}
+        self.lineas_conexion = []
+        self.nodo_origen = None
+        NodoVisual.contador = 1
+        self.limpiar_tabs()
+
+    def guardar_diagrama(self):
+        ruta = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Archivos JSON", "*.json")]
+        )
+        if not ruta:
+            return
+
+        datos = {"nodos": [nodo.a_diccionario() for nodo in self.nodos.values()]}
+        with open(ruta, "w", encoding="utf-8") as archivo:
+            json.dump(datos, archivo, indent=4, ensure_ascii=False)
+
+        messagebox.showinfo("Guardar", "Diagrama guardado correctamente")
+
+    def cargar_diagrama(self):
+        ruta = filedialog.askopenfilename(filetypes=[("Archivos JSON", "*.json")])
+        if not ruta:
+            return
+
+        with open(ruta, "r", encoding="utf-8") as archivo:
+            datos = json.load(archivo)
+
+        self.nuevo_diagrama()
+        for item in datos.get("nodos", []):
+            nodo = NodoVisual(
+                self.canvas,
+                item["x"],
+                item["y"],
+                item["tipo"],
+                item["texto"],
+                item["id"],
+                item.get("conexiones", [])
+            )
+            self.nodos[nodo.id_unico] = nodo
+            self.reasignar_eventos_nodo(nodo)
+
+        self.redibujar_conexiones()
+
+    def buscar_inicio(self):
+        for nodo in self.nodos.values():
+            if nodo.tipo == "INICIO":
+                return nodo
+        return None
+
+    def construir_ast_desde_diagrama(self):
+        inicio = self.buscar_inicio()
+        if inicio is None:
+            raise Exception("Debe existir un nodo INICIO")
+
+        visitados = set()
+        sentencias = self.recorrer_desde(inicio, visitados, detener_en_fin=True)
+        return NodoPrograma(sentencias)
+
+    def recorrer_desde(self, nodo, visitados, detener_en_fin=False):
+        sentencias = []
+        actual = nodo
+
+        while actual:
+            if actual.id_unico in visitados:
+                break
+            visitados.add(actual.id_unico)
+
+            if actual.tipo == "FIN":
+                if detener_en_fin:
+                    break
+                return sentencias
+
+            if actual.tipo == "PROCESO":
+                sentencias.append(NodoAsignacion(actual.texto))
+            elif actual.tipo == "ENTRADA":
+                sentencias.append(NodoEntrada(actual.texto))
+            elif actual.tipo == "SALIDA":
+                sentencias.append(NodoImprimir(actual.texto))
+            elif actual.tipo == "DECISION":
+                cuerpo_si = []
+                cuerpo_no = []
+                if len(actual.conexiones) >= 1:
+                    nodo_si = self.nodos.get(actual.conexiones[0])
+                    if nodo_si:
+                        cuerpo_si = self.recorrer_desde(nodo_si, set(visitados), detener_en_fin=False)
+                if len(actual.conexiones) >= 2:
+                    nodo_no = self.nodos.get(actual.conexiones[1])
+                    if nodo_no:
+                        cuerpo_no = self.recorrer_desde(nodo_no, set(visitados), detener_en_fin=False)
+                sentencias.append(NodoCondicional(actual.texto, cuerpo_si, cuerpo_no))
+                break
+
+            if actual.conexiones:
+                actual = self.nodos.get(actual.conexiones[0])
+            else:
+                actual = None
+
+        return sentencias
 
     def compilar(self):
         try:
-            traductor = TraductorDiagrama(self.nodos, self.conexiones)
-            ast = traductor.construir_ast()
+            programa = self.construir_ast_desde_diagrama()
+            semantico = AnalizadorSemantico()
+            semantico.analizar_programa(programa)
 
-            codigo_py = ast.traducirPy()
-            codigo_c = ast.traducirC()
-            codigo_asm = ast.generarCodigo()
+            traductor = Traductor(programa)
+            codigo_py = traductor.traducir_python()
+            codigo_c = traductor.traducir_c()
+            codigo_asm = traductor.traducir_asm()
 
             self.codigo_python_actual = codigo_py
-            self.poner_texto(self.tab_py, codigo_py)
-            self.poner_texto(self.tab_c, codigo_c)
-            self.poner_texto(self.tab_asm, codigo_asm)
-            self.mostrar_salida("Compilación terminada correctamente.")
+            self.escribir_tab(self.tab_py, codigo_py)
+            self.escribir_tab(self.tab_c, codigo_c)
+            self.escribir_tab(self.tab_asm, codigo_asm)
+            self.generar_tokens_diagrama()
+            self.mostrar_salida("Compilacion realizada correctamente.")
         except Exception as error:
-            self.mostrar_salida(f"Error: {error}")
+            self.mostrar_salida(f"Error al compilar:\n{error}")
+
+    def generar_tokens_diagrama(self):
+        lineas = []
+        for nodo in self.nodos.values():
+            if nodo.tipo in ["PROCESO", "DECISION", "ENTRADA", "SALIDA"]:
+                try:
+                    tokens = identificar_tokens(nodo.texto)
+                    lineas.append(f"Nodo {nodo.id_unico} - {nodo.tipo}: {nodo.texto}")
+                    for token in tokens:
+                        lineas.append(f"  {token}")
+                    lineas.append("")
+                except Exception as error:
+                    lineas.append(f"Nodo {nodo.id_unico}: error lexico {error}")
+        self.escribir_tab(self.tab_tokens, "\n".join(lineas))
+
+    def ver_tokens_nodo(self):
+        if not self.nodos:
+            return
+        opciones = [f"{n.id_unico} - {n.tipo}: {n.texto}" for n in self.nodos.values()]
+        elegido = simpledialog.askstring("Tokens", "Escriba el ID del nodo:\n" + "\n".join(opciones))
+        if not elegido:
+            return
+        try:
+            id_nodo = int(elegido.strip())
+            nodo = self.nodos[id_nodo]
+            tokens = identificar_tokens(nodo.texto)
+            resultado = "\n".join(str(token) for token in tokens)
+            self.escribir_tab(self.tab_tokens, resultado)
+        except Exception as error:
+            self.mostrar_salida(f"Error al obtener tokens: {error}")
 
     def ejecutar_python(self):
         if not self.codigo_python_actual.strip():
             self.compilar()
-
         if not self.codigo_python_actual.strip():
             return
 
@@ -215,8 +307,8 @@ class IDECompilador(tk.Tk):
                 return "0"
             return valor
 
-        sys_stdout_original = sys.stdout
-        entrada_original = builtins.input
+        stdout_original = sys.stdout
+        input_original = builtins.input
 
         try:
             sys.stdout = salida
@@ -225,17 +317,17 @@ class IDECompilador(tk.Tk):
             exec(self.codigo_python_actual, entorno)
             resultado = salida.getvalue()
             if resultado.strip() == "":
-                resultado = "El programa no imprimió ninguna salida."
+                resultado = "El programa no imprimio ninguna salida."
             self.mostrar_salida(resultado)
         except Exception as error:
             self.mostrar_salida(f"Error al ejecutar Python: {error}")
         finally:
-            sys.stdout = sys_stdout_original
-            builtins.input = entrada_original
+            sys.stdout = stdout_original
+            builtins.input = input_original
 
-    def poner_texto(self, widget, texto):
-        widget.delete("1.0", tk.END)
-        widget.insert(tk.END, texto)
+    def escribir_tab(self, tab, texto):
+        tab.delete("1.0", tk.END)
+        tab.insert(tk.END, texto)
 
     def mostrar_salida(self, texto):
         self.output_text.config(state="normal")
@@ -243,65 +335,8 @@ class IDECompilador(tk.Tk):
         self.output_text.insert(tk.END, texto)
         self.output_text.config(state="disabled")
 
-    def nuevo(self):
-        self.canvas.delete("all")
-        self.nodos.clear()
-        self.conexiones.clear()
-        self.conexiones_lineas.clear()
-        self.contador_nodos = 0
+    def limpiar_tabs(self):
         self.codigo_python_actual = ""
-        self.poner_texto(self.tab_py, "")
-        self.poner_texto(self.tab_c, "")
-        self.poner_texto(self.tab_asm, "")
+        for tab in [self.tab_py, self.tab_c, self.tab_asm, self.tab_tokens]:
+            self.escribir_tab(tab, "")
         self.mostrar_salida("")
-
-    def guardar(self):
-        ruta = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("Diagrama JSON", "*.json"), ("Todos", "*.*")]
-        )
-        if not ruta:
-            return
-
-        datos = {
-            "contador_nodos": self.contador_nodos,
-            "nodos": [nodo.datos() for nodo in self.nodos.values()],
-            "conexiones": self.conexiones
-        }
-
-        with open(ruta, "w", encoding="utf-8") as archivo:
-            json.dump(datos, archivo, indent=4, ensure_ascii=False)
-
-        self.mostrar_salida(f"Diagrama guardado en:\n{ruta}")
-
-    def cargar(self):
-        ruta = filedialog.askopenfilename(
-            filetypes=[("Diagrama JSON", "*.json"), ("Todos", "*.*")]
-        )
-        if not ruta:
-            return
-
-        try:
-            with open(ruta, "r", encoding="utf-8") as archivo:
-                datos = json.load(archivo)
-
-            self.nuevo()
-            self.contador_nodos = datos.get("contador_nodos", 0)
-
-            for item in datos.get("nodos", []):
-                nodo = NodoVisual(
-                    self.canvas,
-                    item["id"],
-                    item["x"],
-                    item["y"],
-                    item["tipo"],
-                    item.get("texto", "")
-                )
-                self.nodos[item["id"]] = nodo
-                self.reasignar_eventos_nodo(nodo)
-
-            self.conexiones = datos.get("conexiones", [])
-            self.redibujar_conexiones()
-            self.mostrar_salida(f"Diagrama cargado desde:\n{ruta}")
-        except Exception as error:
-            messagebox.showerror("Error", str(error))
