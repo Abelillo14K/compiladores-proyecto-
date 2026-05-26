@@ -1,12 +1,14 @@
+
 import re
 
 
+# separa el texto en tokens
 def identificar_tokens(texto):
     especificaciones = [
         ("NUMBER", r"\d+(\.\d+)?"),
         ("STRING", r'"[^"\\]*(?:\\.[^"\\]*)*"'),
-        ("OPERATOR", r"==|!=|>=|<=|[+\-*/=<>]"),
-        ("DELIMITER", r"[(),;]"),
+        ("OPERATOR", r"==|!=|>=|<=|&&|\|\||[+\-*/=<>]"),
+        ("DELIMITER", r"[(){},;]"),
         ("IDENTIFIER", r"[A-Za-z_ÁÉÍÓÚáéíóúÑñ][A-Za-z0-9_ÁÉÍÓÚáéíóúÑñ]*"),
         ("WHITESPACE", r"\s+"),
         ("MISMATCH", r"."),
@@ -17,7 +19,7 @@ def identificar_tokens(texto):
 
     palabras_reservadas = {
         "inicio", "fin", "si", "entonces", "sino", "finsi", "escribir",
-        "entrada", "leer", "int", "float", "return", "main", "print", "printf"
+        "entrada", "leer", "int", "float", "void", "return", "main", "print", "printf"
     }
 
     for coincidencia in re.finditer(patron, texto):

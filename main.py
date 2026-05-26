@@ -1,3 +1,5 @@
+
+# se abre la ventana principal
 from ide_compilador import IDECompilador
 
 
