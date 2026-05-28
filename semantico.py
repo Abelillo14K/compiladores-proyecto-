@@ -1,4 +1,3 @@
-
 import copy
 import re
 from sintactico_ast import NodoIdentificador, NodoNumero, NodoTexto, NodoOperacion, parsear_expresion

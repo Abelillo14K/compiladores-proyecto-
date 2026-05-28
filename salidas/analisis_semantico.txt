@@ -1,0 +1,49 @@
+RESUMEN FINAL DEL ANALISIS SEMANTICO
+=============================================
+
+Momento A: despues de declarar int y = a * 2
+self.ambitos = [
+  Ambito 1 (global):
+    x: tipo=int, categoria=variable, interno=x_global
+    test: tipo=void, categoria=funcion, interno=test_global
+  Ambito 2 (test):
+    a: tipo=int, categoria=parametro, interno=a_test_2
+    y: tipo=int, categoria=variable, interno=y_test_2
+]
+
+Momento B: justo antes de cerrar el bloque interno
+self.ambitos = [
+  Ambito 1 (global):
+    x: tipo=int, categoria=variable, interno=x_global
+    test: tipo=void, categoria=funcion, interno=test_global
+  Ambito 2 (test):
+    a: tipo=int, categoria=parametro, interno=a_test_2
+    y: tipo=int, categoria=variable, interno=y_test_2
+  Ambito 3 (bloque):
+    x: tipo=float, categoria=variable, interno=x_bloque_3
+]
+
+Momento C: al llegar a la linea escribir(z)
+self.ambitos = [
+  Ambito 1 (global):
+    x: tipo=int, categoria=variable, interno=x_global
+    test: tipo=void, categoria=funcion, interno=test_global
+  Ambito 2 (test):
+    a: tipo=int, categoria=parametro, interno=a_test_2
+    y: tipo=int, categoria=variable, interno=y_test_2
+]
+
+ERRORES SEMANTICOS
+- Error de tipo: operacion entre tipos incompatibles int + float
+- Error de tipo: no se puede asignar una expresion float a la variable y de tipo int
+- Error de visibilidad: la variable z no esta declarada
+
+SHADOWING
+El metodo obtener_tipo_variable busca desde el ultimo ambito abierto hacia el ambito global.
+En la linea y = y + x; encuentra primero la x del bloque interno.
+Por eso la x usada es x_bloque_3 de tipo float y no x_global de tipo int.
+
+CODIGO DE TRES DIRECCIONES
+x_bloque_3 = 5.5
+t1 = y_test_2 + x_bloque_3
+y_test_2 = t1

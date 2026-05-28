@@ -1,4 +1,3 @@
-
 import itertools
 from sintactico_ast import NodoNumero, NodoTexto, NodoIdentificador, NodoOperacion
 
@@ -102,8 +101,8 @@ class Traductor:
                 etiqueta_verdadera = f"L_bool_true_{next(self.contador_etiquetas)}"
                 etiqueta_fin = f"L_bool_fin_{next(self.contador_etiquetas)}"
                 self.generar_comparacion(expresion, lineas)
-                salto = self.salto_para(expresion.operador)
-                lineas.append(f"    {salto} {etiqueta_verdadera}")
+                salto_para = self.salto_para(expresion.operador)
+                lineas.append(f"    {salto_para} {etiqueta_verdadera}")
                 lineas.append("    mov eax, 0")
                 lineas.append(f"    jmp {etiqueta_fin}")
                 lineas.append(f"{etiqueta_verdadera}:")
@@ -130,8 +129,8 @@ class Traductor:
     def generar_condicion(self, condicion, lineas, etiqueta_falsa):
         if isinstance(condicion, NodoOperacion) and condicion.operador in [">", "<", ">=", "<=", "==", "!="]:
             self.generar_comparacion(condicion, lineas)
-            salto_falso = self.salto_falso_para(condicion.operador)
-            lineas.append(f"    {salto_falso} {etiqueta_falsa}")
+            salto_falso_para = self.salto_falso_para(condicion.operador)
+            lineas.append(f"    {salto_falso_para} {etiqueta_falsa}")
         else:
             self.generar_expresion(condicion, lineas)
             lineas.append("    cmp eax, 0")
@@ -140,8 +139,8 @@ class Traductor:
     def generar_condicion_verdadera(self, condicion, lineas, etiqueta_verdadera):
         if isinstance(condicion, NodoOperacion) and condicion.operador in [">", "<", ">=", "<=", "==", "!="]:
             self.generar_comparacion(condicion, lineas)
-            salto = self.salto_para(condicion.operador)
-            lineas.append(f"    {salto} {etiqueta_verdadera}")
+            salto_para = self.salto_para(condicion.operador)
+            lineas.append(f"    {salto_para} {etiqueta_verdadera}")
         else:
             self.generar_expresion(condicion, lineas)
             lineas.append("    cmp eax, 0")

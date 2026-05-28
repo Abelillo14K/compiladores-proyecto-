@@ -1,5 +1,3 @@
-
-import tkinter as tk
 from tkinter import simpledialog
 
 
@@ -96,7 +94,7 @@ class NodoVisual:
             width=120, tags=(tag,)
         )
 
-    # eventos del mouse
+    # asignar eventos del mouse
     def asignar_eventos(self):
         tag = self.etiqueta()
         self.canvas.tag_bind(tag, "<Button-1>", self.iniciar_movimiento, add="+")
@@ -116,7 +114,6 @@ class NodoVisual:
         self.y += dy
         self.mouse_x = event.x
         self.mouse_y = event.y
-
 
     # tamaño usado para conectar flechas
     def tamanio(self):

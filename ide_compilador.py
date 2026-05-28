@@ -1,4 +1,3 @@
-
 import json
 import io
 import os
@@ -105,7 +104,7 @@ class IDECompilador(tk.Tk):
         grupo_diagrama.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="n")
         self.btn_conectar = ttk.Button(grupo_diagrama, text="Conectar", width=16, command=self.activar_conexion)
         self.btn_conectar.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
-        ttk.Button(grupo_diagrama, text="Desconectar", width=16, command=self.desconectar_lineas).grid(row=0, column=1, padx=4, pady=4, sticky="ew")
+        ttk.Button(grupo_diagrama, text="Desconectar", width=16, command=self.desconectar).grid(row=0, column=1, padx=4, pady=4, sticky="ew")
         ttk.Button(grupo_diagrama, text="Eliminar figura", width=16, command=self.eliminar_figura_seleccionada).grid(row=0, column=2, padx=4, pady=4, sticky="ew")
         ttk.Button(grupo_diagrama, text="Validar", width=16, command=self.validar_y_mostrar).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
         ttk.Button(grupo_diagrama, text="Tokens nodo", width=16, command=self.ver_tokens_nodo).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
@@ -279,7 +278,7 @@ class IDECompilador(tk.Tk):
         self.redibujar_conexiones()
 
     # borra las conecciones del diagrama
-    def desconectar_lineas(self):
+    def desconectar(self):
         for nodo in self.nodos.values():
             nodo.conexiones = []
         self.nodo_origen = None
@@ -360,7 +359,7 @@ class IDECompilador(tk.Tk):
         self.redibujar_conexiones()
 
     # revisa que el diagrama tenga buen orden
-    def validar_diagrama(self):
+    def validar_dia(self):
         errores = []
         inicios = [n for n in self.nodos.values() if n.tipo == "INICIO"]
         fines = [n for n in self.nodos.values() if n.tipo == "FIN"]
@@ -408,7 +407,7 @@ class IDECompilador(tk.Tk):
         return visitados
 
     def validar_y_mostrar(self):
-        errores = self.validar_diagrama()
+        errores = self.validar_dia()
         if errores:
             self.mostrar_salida("Errores en el diagrama:\n" + "\n".join(errores))
         else:
@@ -427,11 +426,11 @@ class IDECompilador(tk.Tk):
             raise Exception("Debe existir un nodo INICIO")
 
         visitados = set()
-        sentencias = self.recorrer_desde(inicio, visitados, detener_en_fin=True)
+        sentencias = self.recorrer(inicio, visitados, detener_en_fin=True)
         return NodoPrograma(sentencias)
 
     # recorre las flechas del diagrama
-    def recorrer_desde(self, nodo, visitados, detener_en_fin=False):
+    def recorrer(self, nodo, visitados, detener_en_fin=False):
         sentencias = []
         actual = nodo
 
@@ -519,9 +518,9 @@ class IDECompilador(tk.Tk):
         cuerpo_si = []
         cuerpo_no = []
         if len(ramas) >= 1:
-            cuerpo_si = self.recorrer_desde(ramas[0], set(visitados), detener_en_fin=False)
+            cuerpo_si = self.recorrer(ramas[0], set(visitados), detener_en_fin=False)
         if len(ramas) >= 2:
-            cuerpo_no = self.recorrer_desde(ramas[1], set(visitados), detener_en_fin=False)
+            cuerpo_no = self.recorrer(ramas[1], set(visitados), detener_en_fin=False)
 
         return {
             "nodo_ast": NodoCondicional(decision.texto, cuerpo_si, cuerpo_no),
@@ -569,7 +568,7 @@ class IDECompilador(tk.Tk):
     # compila el diagrama a los lenguajes
     def compilar(self):
         try:
-            errores_diagrama = self.validar_diagrama()
+            errores_diagrama = self.validar_dia()
             if errores_diagrama:
                 raise Exception("Errores en el diagrama:\n" + "\n".join(errores_diagrama))
             programa = self.construir_ast_desde_diagrama()
@@ -724,7 +723,7 @@ class IDECompilador(tk.Tk):
     def compilar_c(self):
         if not self.codigo_c_actual.strip():
             self.compilar()
-        ruta = self.guardar_archivo_salida("codigo_traducido.c", self.codigo_c_actual)
+        ruta = self.guardar_archivo("codigo_traducido.c", self.codigo_c_actual)
         if ruta is None:
             return
         exe = os.path.join(os.path.dirname(ruta), "programa_c")
@@ -743,7 +742,7 @@ class IDECompilador(tk.Tk):
     def compilar_asm(self):
         if not self.codigo_asm_actual.strip():
             self.compilar()
-        ruta = self.guardar_archivo_salida("salida.asm", self.codigo_asm_actual)
+        ruta = self.guardar_archivo("salida.asm", self.codigo_asm_actual)
         if ruta is None:
             return
         carpeta = os.path.dirname(ruta)
@@ -764,7 +763,7 @@ class IDECompilador(tk.Tk):
         except Exception as error:
             self.mostrar_salida(f"No se pudo compilar ASM:\n{error}")
 
-    def guardar_archivo_salida(self, nombre, contenido):
+    def guardar_archivo(self, nombre, contenido):
         if not contenido.strip():
             self.mostrar_salida("No hay codigo generado para guardar.")
             return None
